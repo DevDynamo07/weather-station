@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Weather Monitoring System</title>
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <style>
+    .container { max-width: 1000px; margin: auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
+    h1 { color: #0077b6; text-align: center; }
+    .status { color: green; font-weight: bold; }
+    .search { display: flex; justify-content: center; margin-bottom: 20px; }
+    .search input { padding: 10px; width: 250px; border-radius: 8px; border: 1px solid #ccc; margin-right: 10px; }
+    .search button { padding: 10px 15px; background: #0077b6; color: white; border: none; border-radius: 8px; cursor: pointer; }
+    .search button:hover { background: #005f8a; }
+    .card { background: #f8f9fa; padding: 15px; margin: 15px 0; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.05); }
+    .forecast { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; }
+    .day { background: #e0f2fe; padding: 12px; border-radius: 8px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.05); transition: transform 0.2s; }
+    .day:hover { transform: scale(1.05); }
+    .icon { font-size: 2rem; margin: 5px 0; }
+    #map { height: 350px; border-radius: 12px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🌤️ Weather Monitoring System <span class="status">STATUS: ACTIVE</span></h1>
+
+    <div class="search">
+      <input id="cityInput" placeholder="Enter city..." />
+      <button onclick="searchCity()">Search</button>
+    </div>
+
+    <div id="current" class="card">
+      <h2>Current Weather</h2>
+      <p id="currentData">Loading...</p>
+    </div>
+
+    <div class="card">
+      <h2>7-Day Forecast</h2>
+      <div id="forecast" class="forecast"></div>
+    </div>
+
+    <div class="card">
+      <h2>Location Map</h2>
+      <p id="coords"></p>
+      <div id="map"></div>
+    </div>
+  </div>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script>
+    let lat = 28.6139;  // default New Delhi
+    let lon = 77.2090;
+    let map, marker;
+
+    // Mapping weather codes → description + icon
+    function getWeatherDesc(code) {
+      const map = {
+        0: ["☀️", "Clear sky"],
+        1: ["🌤️", "Mainly clear"],
+        2: ["⛅", "Partly cloudy"],
+        3: ["☁️", "Overcast"],
+        45: ["🌫️", "Fog"],
+        48: ["🌫️", "Depositing rime fog"],
+        51: ["🌦️", "Light drizzle"],
+        53: ["🌦️", "Moderate drizzle"],
+        55: ["🌧️", "Dense drizzle"],
+        61: ["🌦️", "Slight rain"],
+        63: ["🌧️", "Moderate rain"],
+        65: ["🌧️", "Heavy rain"],
+        71: ["❄️", "Slight snow fall"],
+        73: ["❄️", "Moderate snow fall"],
+        75: ["❄️", "Heavy snow fall"],
+        77: ["🌨️", "Snow grains"],
+        80: ["🌦️", "Rain showers"],
+        81: ["🌧️", "Heavy rain showers"],
+        82: ["⛈️", "Violent rain showers"],
+        95: ["⛈️", "Thunderstorm"],
+        96: ["⛈️", "Thunderstorm with hail"],
+        99: ["🌩️", "Heavy thunderstorm with hail"]
+      };
+      return map[code] || ["❓", "Unknown"];
+    }
+
+    // Fetch weather data
+    async function fetchWeather() {
+      document.getElementById("currentData").innerText = "Loading...";
+
+      try {
+        const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&daily=temperature_2m_max,temperature_2m_min,weathercode&timezone=auto`;
+        const res = await fetch(url);
+        const data = await res.json();
+
+        // Current weather
+        const cur = data.current_weather;
+        const [icon, desc] = getWeatherDesc(cur.weathercode);
+        document.getElementById("currentData").innerHTML =
+          `${icon} ${desc}<br>🌡️ Temp: ${cur.temperature}°C<br>💨 Wind: ${cur.windspeed} km/h`;
+
+        // Coordinates
+        document.getElementById("coords").innerText = `Lat: ${lat}, Lon: ${lon}`;
+
+        // Forecast
+        let fcHTML = "";
+        for (let i = 0; i < data.daily.time.length; i++) {
+          const [fIcon, fDesc] = getWeatherDesc(data.daily.weathercode[i]);
+          fcHTML += `
+            <div class="day">
+              <strong>${data.daily.time[i]}</strong><br>
+              <div class="icon">${fIcon}</div>
+              <div>${fDesc}</div>
+              🌡️ Max: ${data.daily.temperature_2m_max[i]}°C<br>
+              ❄️ Min: ${data.daily.temperature_2m_min[i]}°C
+            </div>`;
+        }
+        document.getElementById("forecast").innerHTML = fcHTML;
+
+        // Update map
+        if (!map) {
+          map = L.map("map").setView([lat, lon], 8);
+          L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+            attribution: "© OpenStreetMap"
+          }).addTo(map);
+          marker = L.marker([lat, lon]).addTo(map);
+        } else {
+          map.setView([lat, lon], 8);
+          marker.setLatLng([lat, lon]);
+        }
+
+      } catch (err) {
+        document.getElementById("currentData").innerText = "Failed to fetch weather data.";
+        console.error(err);
+      }
+    }
+
+    // Search by city
+    async function searchCity() {
+      const city = document.getElementById("cityInput").value;
+      if (!city) return;
+
+      try {
+        const geoUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1`;
+        const res = await fetch(geoUrl);
+        const data = await res.json();
+        if (!data.results || data.results.length === 0) {
+          alert("City not found");
+          return;
+        }
+        lat = data.results[0].latitude;
+        lon = data.results[0].longitude;
+        fetchWeather();
+      } catch (err) {
+        alert("City search failed");
+      }
+    }
+
+    // Run on load
+    fetchWeather();
+  </script>
+</body>
+</html>
