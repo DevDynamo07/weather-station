@@ -22,3 +22,6 @@ It fetches data from public weather APIs and presents information like temperatu
 - Chart.js or other visualization library (optional)
 - Deployed with Vercel 
 
+## Deployed Application
+
+You can view the live version of this project here: (https://weather-station-ecru-xi.vercel.app/)
